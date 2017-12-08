@@ -21,6 +21,7 @@ namespace AMSAssetManager
         private static readonly string _AMSRESTAPIEndpoint = Environment.GetEnvironmentVariable("AMSRESTAPIEndpoint");
         private static readonly string _AMSClientId = Environment.GetEnvironmentVariable("AMSClientId");
         private static readonly string _AMSClientSecret = Environment.GetEnvironmentVariable("AMSClientSecret");
+        private static readonly string _Origin = Environment.GetEnvironmentVariable("Origin");
 
         const string RouteGetAssetInfoFromAlternateId = "GetAssetInfoFromAlternateId/{movieId}";
         const string RouteGetAssetInfoFromAlternateIdWithManifest = "GetAssetInfoFromAlternateIdWithManifest/{movieId}";
@@ -49,7 +50,7 @@ namespace AMSAssetManager
                 log.Info(strAssetsNotFoundError);
                 return req.CreateErrorResponse(HttpStatusCode.NotFound, strAssetsNotFoundError);
             }
-            IStreamingEndpoint defaultOrigin = _context.StreamingEndpoints.Where(se => se.Name == "default").FirstOrDefault();
+           // IStreamingEndpoint defaultOrigin = _context.StreamingEndpoints.Where(se => se.Name == "default").FirstOrDefault();
             List<string> manifestUrls = new List<string>();
             foreach (IAsset asset in assetsWithId)
             {
@@ -61,7 +62,7 @@ namespace AMSAssetManager
                     return req.CreateErrorResponse(HttpStatusCode.NotFound, strLocatorNotFoundError);
                 }
 
-                Uri publishedIsmUrl = GetValidOnDemandURI(defaultOrigin, asset, locator);
+                Uri publishedIsmUrl = GetValidOnDemandURI( asset, locator);
                 manifestUrls.Add(publishedIsmUrl.AbsoluteUri);
             }
             return req.CreateResponse(HttpStatusCode.OK, manifestUrls, JsonMediaTypeFormatter.DefaultMediaType);
@@ -70,6 +71,7 @@ namespace AMSAssetManager
         public class AssetInfo
         {
             public string Locator { get; set; }
+            public string ManifestUrl { get; set; }
             public string Manifest { get; set; }
         }
         [FunctionName("GetAssetInfoFromAlternateIdWithManifest")]
@@ -91,7 +93,7 @@ namespace AMSAssetManager
                 log.Info(strAssetsNotFoundError);
                 return req.CreateErrorResponse(HttpStatusCode.NotFound, strAssetsNotFoundError);
             }
-            IStreamingEndpoint defaultOrigin = _context.StreamingEndpoints.Where(se => se.Name == "default").FirstOrDefault();
+           // IStreamingEndpoint defaultOrigin = _context.StreamingEndpoints.Where(se => se.Name == "default").FirstOrDefault();
             List<AssetInfo> manifestUrls = new List<AssetInfo>();
             foreach (IAsset asset in assetsWithId)
             {
@@ -104,12 +106,12 @@ namespace AMSAssetManager
                 }
                 ai.Locator = locator.ContentAccessComponent;
 
-                Uri publishedIsmUrl = GetValidOnDemandURI(defaultOrigin, asset, locator);
+                Uri publishedIsmUrl = GetValidOnDemandURI(asset, locator);
                 HttpClient myHttpClient = new HttpClient();
                 HttpResponseMessage response = await myHttpClient.GetAsync(publishedIsmUrl.AbsoluteUri + strDashSuffix);
                 ai.Manifest = await response.Content.ReadAsStringAsync();
 
-
+                ai.ManifestUrl = GetValidOnDemandURI(asset, locator).AbsoluteUri;
                 manifestUrls.Add(ai);
             }
             return req.CreateResponse(HttpStatusCode.OK, manifestUrls, JsonMediaTypeFormatter.DefaultMediaType);
@@ -138,10 +140,10 @@ namespace AMSAssetManager
         {
             return _context.Assets.Where(a => a.AlternateId == alternateID).OrderBy(o => o.Name).ToList();
         }
-        public static Uri GetValidOnDemandURI(IStreamingEndpoint origin, IAsset asset, ILocator locator)
+        public static Uri GetValidOnDemandURI(IAsset asset, ILocator locator)
         {
             var ismFile = asset.AssetFiles.AsEnumerable().Where(f => f.Name.EndsWith(".ism")).OrderByDescending(f => f.IsPrimary).FirstOrDefault();
-            string strPublishUrl = $"https://{origin.HostName}/{locator.ContentAccessComponent}/{ismFile.Name}/manifest";
+            string strPublishUrl = $"https://{_Origin}/{locator.ContentAccessComponent}/{ismFile.Name}/manifest";
             return new Uri(strPublishUrl);
         }
     }
