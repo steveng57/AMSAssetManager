@@ -23,17 +23,20 @@ namespace AMSAssetManager
         private static readonly string _AMSClientSecret = Environment.GetEnvironmentVariable("AMSClientSecret");
 
         const string RouteGetAssetInfoFromAlternateId = "GetAssetInfoFromAlternateId/{movieId}";
+        const string RouteGetAssetInfoFromAlternateIdWithManifest = "GetAssetInfoFromAlternateIdWithManifest/{movieId}";
 
         const string strContextError = "Unable to create AMS context, check credentials on the Function App";
         const string strAssetsNotFoundError = "No assets with this movidId found.";
         const string strLocatorNotFoundError = "One or more assets do not have a valid locator.";
+
+        const string strDashSuffix = "(format=mpd-time-csf)";
         [FunctionName("GetAssetInfoFromAlternateId")]
-        public static async Task<HttpResponseMessage> GetAssetInfoFromAlternateId([HttpTrigger(AuthorizationLevel.Function, "get",  Route = RouteGetAssetInfoFromAlternateId)]HttpRequestMessage req, string movieId, TraceWriter log)
+        public static async Task<HttpResponseMessage> GetAssetInfoFromAlternateId([HttpTrigger(AuthorizationLevel.Function, "get", Route = RouteGetAssetInfoFromAlternateId)]HttpRequestMessage req, string movieId, TraceWriter log)
         {
             log.Info("C# HTTP trigger function processed a request.");
             try
             {
-               _context = _context ??  GetCloudMediaContextAADPrincipal(log);
+                _context = _context ?? GetCloudMediaContextAADPrincipal(log);
             }
             catch
             {
@@ -41,7 +44,7 @@ namespace AMSAssetManager
                 return req.CreateErrorResponse(HttpStatusCode.Forbidden, strContextError);
             }
             List<IAsset> assetsWithId = GetAssestsWithAlternateId(movieId);
-            if(assetsWithId.Count == 0)
+            if (assetsWithId.Count == 0)
             {
                 log.Info(strAssetsNotFoundError);
                 return req.CreateErrorResponse(HttpStatusCode.NotFound, strAssetsNotFoundError);
@@ -61,7 +64,55 @@ namespace AMSAssetManager
                 Uri publishedIsmUrl = GetValidOnDemandURI(defaultOrigin, asset, locator);
                 manifestUrls.Add(publishedIsmUrl.AbsoluteUri);
             }
-            return req.CreateResponse(HttpStatusCode.OK, manifestUrls, JsonMediaTypeFormatter.DefaultMediaType); 
+            return req.CreateResponse(HttpStatusCode.OK, manifestUrls, JsonMediaTypeFormatter.DefaultMediaType);
+        }
+
+        public class AssetInfo
+        {
+            public string Locator { get; set; }
+            public string Manifest { get; set; }
+        }
+        [FunctionName("GetAssetInfoFromAlternateIdWithManifest")]
+        public static async Task<HttpResponseMessage> GetAssetInfoFromAlternateIdWithManifest([HttpTrigger(AuthorizationLevel.Function, "get", Route = RouteGetAssetInfoFromAlternateIdWithManifest)]HttpRequestMessage req, string movieId, TraceWriter log)
+        {
+            log.Info("C# HTTP trigger function processed a request.");
+            try
+            {
+                _context = _context ?? GetCloudMediaContextAADPrincipal(log);
+            }
+            catch
+            {
+                log.Info(strContextError);
+                return req.CreateErrorResponse(HttpStatusCode.Forbidden, strContextError);
+            }
+            List<IAsset> assetsWithId = GetAssestsWithAlternateId(movieId);
+            if (assetsWithId.Count == 0)
+            {
+                log.Info(strAssetsNotFoundError);
+                return req.CreateErrorResponse(HttpStatusCode.NotFound, strAssetsNotFoundError);
+            }
+            IStreamingEndpoint defaultOrigin = _context.StreamingEndpoints.Where(se => se.Name == "default").FirstOrDefault();
+            List<AssetInfo> manifestUrls = new List<AssetInfo>();
+            foreach (IAsset asset in assetsWithId)
+            {
+                AssetInfo ai = new AssetInfo();
+                ILocator locator = asset.Locators.OrderBy(o => o.Id).FirstOrDefault();
+                if (locator == null)
+                {
+                    log.Info(strLocatorNotFoundError);
+                    return req.CreateErrorResponse(HttpStatusCode.NotFound, strLocatorNotFoundError);
+                }
+                ai.Locator = locator.ContentAccessComponent;
+
+                Uri publishedIsmUrl = GetValidOnDemandURI(defaultOrigin, asset, locator);
+                HttpClient myHttpClient = new HttpClient();
+                HttpResponseMessage response = await myHttpClient.GetAsync(publishedIsmUrl.AbsoluteUri + strDashSuffix);
+                ai.Manifest = await response.Content.ReadAsStringAsync();
+
+
+                manifestUrls.Add(ai);
+            }
+            return req.CreateResponse(HttpStatusCode.OK, manifestUrls, JsonMediaTypeFormatter.DefaultMediaType);
         }
         private static CloudMediaContext GetCloudMediaContextAADPrincipal(TraceWriter log)
         {
