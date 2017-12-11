@@ -44,7 +44,7 @@ namespace AMSAssetManager
                 log.Info(strContextError);
                 return req.CreateErrorResponse(HttpStatusCode.Forbidden, strContextError);
             }
-            List<IAsset> assetsWithId = GetAssestsWithAlternateId(movieId);
+            List<IAsset> assetsWithId = await GetAssestsWithAlternateId(movieId);
             if (assetsWithId.Count == 0)
             {
                 log.Info(strAssetsNotFoundError);
@@ -87,7 +87,7 @@ namespace AMSAssetManager
                 log.Info(strContextError);
                 return req.CreateErrorResponse(HttpStatusCode.Forbidden, strContextError);
             }
-            List<IAsset> assetsWithId = GetAssestsWithAlternateId(movieId);
+            List<IAsset> assetsWithId = await GetAssestsWithAlternateId(movieId);
             if (assetsWithId.Count == 0)
             {
                 log.Info(strAssetsNotFoundError);
@@ -136,7 +136,7 @@ namespace AMSAssetManager
                 return null;
             }
         }
-        private static List<IAsset> GetAssestsWithAlternateId(string alternateID)
+        private static async Task<List<IAsset>> GetAssestsWithAlternateId(string alternateID)
         {
             return _context.Assets.Where(a => a.AlternateId == alternateID).OrderBy(o => o.Name).ToList();
         }
